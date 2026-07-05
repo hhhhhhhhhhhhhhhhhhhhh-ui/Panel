@@ -1,0 +1,99 @@
+version: '3.9'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: admin_db
+    environment:
+      POSTGRES_DB: admin_panel
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: admin_redis
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    ports:
+      - "127.0.0.1:6379:6379"
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: admin_backend
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://app:${DB_PASSWORD}@db:5432/admin_panel
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      JWT_SECRET: ${JWT_SECRET}
+      CLAUDE_API_KEY: ${CLAUDE_API_KEY}
+      TELEGRAM_API_ID: ${TELEGRAM_API_ID}
+      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}
+      FB_ADS_MCP_URL: ${FB_ADS_MCP_URL}
+      PORT: 3001
+    depends_on:
+      - db
+      - redis
+    ports:
+      - "127.0.0.1:3001:3001"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: admin_frontend
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+      NODE_ENV: production
+    ports:
+      - "127.0.0.1:3000:3000"
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    container_name: admin_nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+    depends_on:
+      - backend
+      - frontend
+    restart: unless-stopped
+
+  guacd:
+    image: guacamole/guacd:latest
+    container_name: admin_guacd
+    restart: unless-stopped
+
+  guacamole:
+    image: guacamole/guacamole:latest
+    container_name: admin_guacamole
+    environment:
+      GUACD_HOSTNAME: guacd
+      POSTGRES_HOSTNAME: db
+      POSTGRES_DATABASE: admin_panel
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: $DB_PASSWORD
+    depends_on:
+      - db
+      - guacd
+    ports:
+      - "127.0.0.1:8082:8080" # Map to local port 8082 to prevent conflicts
+    restart: unless-stopped
+
+volumes:
+  pg_data:
+  redis_data:

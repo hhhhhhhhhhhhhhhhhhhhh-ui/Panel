@@ -130,7 +130,7 @@ router.post('/login', async (req: Request, res: Response) => {
     }
 
     const user = result.rows[0];
-    const validPassword = await verifyPassword(user.password_hash, password);
+    const validPassword = await verifyPassword(user.password_hash.toString(), password);
 
     if (!validPassword) {
       const locked = await trackFailedAttempt(emailHash);

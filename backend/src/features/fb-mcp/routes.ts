@@ -54,10 +54,17 @@ router.get('/config', authMiddleware, (_req: AuthenticatedRequest, res: Response
   const appSecret = process.env.META_APP_SECRET || '';
   const businessId = process.env.META_BUSINESS_ID || '';
   const plausibleUrl = process.env.PLAUSIBLE_DASHBOARD_URL || '';
+  const claudeKey = process.env.CLAUDE_API_KEY || '';
+  
   const tokenLen = token.length;
   const maskedToken = tokenLen > 10
     ? `${token.slice(0, 6)}${'•'.repeat(Math.min(tokenLen - 10, 30))}${token.slice(-4)}`
     : tokenLen > 0 ? '••••••••' : '';
+
+  const claudeKeyLen = claudeKey.length;
+  const maskedClaudeKey = claudeKeyLen > 10
+    ? `${claudeKey.slice(0, 6)}${'•'.repeat(Math.min(claudeKeyLen - 10, 30))}${claudeKey.slice(-4)}`
+    : claudeKeyLen > 0 ? '••••••••' : '';
 
   res.json({
     accessToken: maskedToken,
@@ -66,19 +73,22 @@ router.get('/config', authMiddleware, (_req: AuthenticatedRequest, res: Response
     appSecretSet: !!appSecret,
     businessId,
     plausibleDashboardUrl: plausibleUrl,
+    claudeApiKey: maskedClaudeKey,
+    claudeApiKeySet: !!claudeKey,
     binaryExists: fs.existsSync(BINARY_PATH),
   });
 });
 
 // ─── POST /api/fb-mcp/config ──────────────────────────────────────────────────
 router.post('/config', authMiddleware, (req: AuthenticatedRequest, res: Response) => {
-  const { accessToken, adAccountId, appSecret, businessId, plausibleDashboardUrl } = req.body;
+  const { accessToken, adAccountId, appSecret, businessId, plausibleDashboardUrl, claudeApiKey } = req.body;
   try {
     if (accessToken  !== undefined && accessToken  !== '') writeEnvKey('META_ADS_ACCESS_TOKEN', accessToken);
     if (adAccountId  !== undefined && adAccountId  !== '') writeEnvKey('META_AD_ACCOUNT_ID',    adAccountId);
     if (appSecret    !== undefined && appSecret    !== '') writeEnvKey('META_APP_SECRET',        appSecret);
     if (businessId   !== undefined && businessId   !== '') writeEnvKey('META_BUSINESS_ID',       businessId);
     if (plausibleDashboardUrl !== undefined) writeEnvKey('PLAUSIBLE_DASHBOARD_URL', plausibleDashboardUrl);
+    if (claudeApiKey !== undefined && claudeApiKey !== '') writeEnvKey('CLAUDE_API_KEY',          claudeApiKey);
     res.json({ ok: true, message: 'Credentials saved and applied immediately.' });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

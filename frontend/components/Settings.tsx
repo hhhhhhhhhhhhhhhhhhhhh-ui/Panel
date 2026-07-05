@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useAuth } from '../lib/hooks/useAuth';
-import { decrypt } from '../lib/crypto';
+import { encrypt, decrypt } from '../lib/crypto';
 import { QRCodeSVG } from 'qrcode.react';
 import { addActivityLog, getActivityLogs, ActivityLog } from '../lib/storage';
 import { 
@@ -40,6 +40,90 @@ export default function Settings() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [logs, setLogs] = useState<ActivityLog[]>([]);
+  
+  // Credentials and API Keys States
+  const [megaEmail, setMegaEmail] = useState('');
+  const [megaPassword, setMegaPassword] = useState('');
+  const [claudeApiKey, setClaudeApiKey] = useState('');
+  const [claudeKeySet, setClaudeKeySet] = useState(false);
+  const [savingKeys, setSavingKeys] = useState(false);
+
+  // Load Claude API Key and Mega credentials
+  useEffect(() => {
+    if (!token) return;
+    
+    // 1. Fetch Claude Key Config
+    axios.get('/api/fb-mcp/config', {
+      headers: { Authorization: `Bearer ${token}` }
+    }).then(res => {
+      setClaudeKeySet(res.data.claudeApiKeySet);
+      if (res.data.claudeApiKey) {
+        setClaudeApiKey(res.data.claudeApiKey);
+      }
+    }).catch(err => console.error('Failed to load Claude key config', err));
+
+    // 2. Load and decrypt MEGA credentials
+    if (masterKey) {
+      try {
+        const encrypted = localStorage.getItem('operator_credentials_vault');
+        const nonce = localStorage.getItem('operator_credentials_nonce');
+        if (encrypted && nonce) {
+          const decryptedJson = decrypt(encrypted, nonce, masterKey);
+          const creds = JSON.parse(decryptedJson);
+          if (creds.megaEmail) setMegaEmail(creds.megaEmail);
+          if (creds.megaPassword) setMegaPassword(creds.megaPassword);
+        }
+      } catch (e) {
+        console.error('Failed to decrypt Mega credentials', e);
+      }
+    }
+  }, [token, masterKey]);
+
+  const handleSaveCredentials = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+    setSavingKeys(true);
+
+    try {
+      // 1. Save Claude API Key to backend (if updated and not masked)
+      if (claudeApiKey && !claudeApiKey.includes('••••')) {
+        await axios.post('/api/fb-mcp/config', {
+          claudeApiKey: claudeApiKey.trim()
+        }, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setClaudeKeySet(true);
+      }
+
+      // 2. Save MEGA credentials client-side (encrypted)
+      if (masterKey) {
+        const credsObj = {
+          megaEmail: megaEmail.trim(),
+          megaPassword: megaPassword.trim()
+        };
+        const { ciphertext, nonce } = encrypt(JSON.stringify(credsObj), masterKey);
+        localStorage.setItem('operator_credentials_vault', ciphertext);
+        localStorage.setItem('operator_credentials_nonce', nonce);
+      }
+
+      setSuccess('🔑 API Keys and integration credentials updated successfully!');
+      
+      if (masterKey) {
+        await addActivityLog(
+          'Update Credentials',
+          'Security Settings',
+          'Symmetrically encrypted integration keys updated.',
+          masterKey
+        );
+      }
+      loadLogs();
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to save configuration.');
+    } finally {
+      setSavingKeys(false);
+    }
+  };
   
   // Backup manager states
   const [backingUp, setBackingUp] = useState(false);
@@ -342,6 +426,85 @@ export default function Settings() {
             </form>
           </div>
         )}
+      </div>
+
+      {/* API Keys & Integration Credentials */}
+      <div className="p-6 bg-slate-950 border border-slate-850 rounded-lg space-y-4">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-1.5">
+            <Key className="w-4 h-4 text-indigo-400" />
+            API Keys & Integration Credentials
+          </h3>
+          <p className="text-xs text-slate-500 mt-1">
+            Configure integration keys for Claude AI Copywriter and client-side encrypted credentials for MEGA backup sync.
+          </p>
+        </div>
+
+        <form onSubmit={handleSaveCredentials} className="space-y-4 pt-2 border-t border-slate-850">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Claude API Key */}
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-slate-400" htmlFor="claude-key">
+                Claude (Anthropic) API Key
+              </label>
+              <input
+                id="claude-key"
+                type="password"
+                value={claudeApiKey}
+                onChange={e => setClaudeApiKey(e.target.value)}
+                placeholder={claudeKeySet ? '••••••••••••••••' : 'sk-ant-api03-...'}
+                className="w-full px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-slate-200 text-xs tracking-wider placeholder-slate-700 focus:outline-none focus:border-slate-700 transition font-mono"
+              />
+              <p className="text-[10px] text-slate-500 leading-relaxed">
+                Used by the Creative Studio AI copywriter. Saved securely in server-side configuration.
+              </p>
+            </div>
+
+            {/* Empty space/aligned block */}
+            <div className="space-y-1 hidden md:block"></div>
+
+            {/* Mega Email */}
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-slate-400" htmlFor="mega-email">
+                MEGA Account Email
+              </label>
+              <input
+                id="mega-email"
+                type="email"
+                value={megaEmail}
+                onChange={e => setMegaEmail(e.target.value)}
+                placeholder="operator@mega.nz"
+                className="w-full px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-slate-200 text-xs placeholder-slate-700 focus:outline-none focus:border-slate-700 transition"
+              />
+            </div>
+
+            {/* Mega Password */}
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-slate-400" htmlFor="mega-pass">
+                MEGA Account Password
+              </label>
+              <input
+                id="mega-pass"
+                type="password"
+                value={megaPassword}
+                onChange={e => setMegaPassword(e.target.value)}
+                placeholder="••••••••••••"
+                className="w-full px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-slate-200 text-xs tracking-wider placeholder-slate-700 focus:outline-none focus:border-slate-700 transition font-mono"
+              />
+            </div>
+          </div>
+
+          <div className="pt-2 flex justify-end">
+            <button
+              type="submit"
+              disabled={savingKeys}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition-all active:scale-95 flex items-center gap-1.5"
+            >
+              {savingKeys ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+              {savingKeys ? 'Saving...' : 'Save Credentials'}
+            </button>
+          </div>
+        </form>
       </div>
 
       {/* Encrypted Backups Card */}

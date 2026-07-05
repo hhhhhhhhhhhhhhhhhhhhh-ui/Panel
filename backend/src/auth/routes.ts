@@ -52,7 +52,7 @@ router.post('/register', async (req: Request, res: Response) => {
     }
 
     // Hash email (never store email in plaintext)
-    const emailHash = crypto.createHash('sha256').update(email).digest();
+    const emailHash = crypto.createHash('sha256').update(email.toLowerCase().trim()).digest();
 
     // Hash password securely (Argon2 or PBKDF2 fallback)
     const passwordHash = await hashPassword(password);
@@ -108,7 +108,7 @@ router.post('/login', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Email and password are required' });
     }
 
-    const emailHash = crypto.createHash('sha256').update(email).digest();
+    const emailHash = crypto.createHash('sha256').update(email.toLowerCase().trim()).digest();
 
     // Verify if user is currently locked out or self-destruct is triggered
     const failedAttemptsKey = `failed_logins:${emailHash.toString('hex')}`;

@@ -23,6 +23,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
     items: [
       { id: 'plausible', label: 'Web Analytics',    icon: <Activity size={16} /> },
       { id: 'media',     label: 'Creative Studio',  icon: <Image size={16} /> },
+      { id: 'adstracker', label: 'Meta Ads Tracker', icon: <Layers size={16} /> },
     ],
   },
   {
